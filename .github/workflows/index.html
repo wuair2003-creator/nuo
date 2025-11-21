@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>傩魂 · 守护者测试</title>
+  <style>
+    /* --- 1. 核心视觉设定 (暗黑极简) --- */
+    :root {
+      --bg-color: #0a0a0a;
+      --text-color: #f0f0f0;
+      --accent-color: #ff4d4f; /* 傩面红 */
+      --secondary-text: #888;
+      --card-bg: #1a1a1a;
+      --border-color: #333;
+    }
+
+    /* 自定义像素手指光标 (黑色描边白填充，或者反过来，适应黑底) */
+    body {
+      /* 这是一个白色的像素手指，适合黑背景。使用经过 URI 编码的 SVG data URI 以提高兼容性 */
+      cursor: url("data:image/svg+xml;utf8,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'32'%20height%3D'32'%3E%3Ctext%20y%3D'26'%20font-size%3D'26'%3E%F0%9F%91%86%3C%2Ftext%3E%3C%2Fsvg%3E") 12 0, auto;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, sans-serif;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      overflow-x: hidden;
+      padding-top: 20px; /* 给顶部留点空间 */
+    }
+
+    /* --- 2. 顶部进度条 (奔跑的小人 - 修复版) --- */
+    .progress-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 6px;
+      background: #222;
+      z-index: 999;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: var(--accent-color);
+      width: 0%;
+      transition: width 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+      position: relative;
+      box-shadow: 0 0 10px var(--accent-color); /* 加点发光效果 */
+    }
+
+    /* 奔跑的小人图标 */
+    .runner-icon {
+      position: absolute;
+      right: -12px;  /* 处于进度条末端 */
+      top: 8px;      /* 【关键修复】正数向下偏移，让他显示在进度条下方，而不是屏幕外 */
+      font-size: 24px;
+      transition: transform 0.2s;
+      filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.3));
+      animation: runBounce 0.5s infinite alternate; /* 加个跑步颠簸动画 */
+    }
+
+    @keyframes runBounce {
+      from { transform: translateY(0); }
+      to { transform: translateY(-3px); }
+    }
+
+    /* --- 3. 滑动容器 --- */
+    .main-viewport {
+      width: 100%;
+      max-width: 600px;
+      padding: 20px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .questions-wrapper {
+      display: flex;
+      transition: transform 0.6s cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    .slide {
+      flex: 0 0 100%;
+      opacity: 0;
+      transform: scale(0.95);
+      transition: opacity 0.4s ease, transform 0.4s ease;
+      pointer-events: none;
+      box-sizing: border-box;
+      padding: 0 10px;
+    }
+
+    .slide.active {
+      opacity: 1;
+      transform: scale(1);
+      pointer-events: auto;
+    }
+
+    /* --- 4. 题目样式 --- */
+    h1 {
+      font-family: "Kaiti", "STKaiti", serif;
+      font-size: 2.2rem;
+      text-align: center;
+      margin-bottom: 10px;
+      letter-spacing: 4px;
+      color: var(--accent-color);
+      text-shadow: 0 0 20px rgba(255, 77, 79, 0.3);
+    }
+
+    .desc {
+      text-align: center;
+      color: var(--secondary-text);
+      margin-bottom: 50px;
+      font-size: 0.9rem;
+      font-weight: 300;
+    }
+
+    .question-num {
+      color: var(--accent-color);
+      font-size: 1rem;
+      font-weight: bold;
+      margin-bottom: 15px;
+      font-family: monospace;
+      opacity: 0.8;
+    }
+
+    .question-text {
+      font-size: 1.5rem;
+      line-height: 1.4;
+      margin-bottom: 35px;
+      font-weight: 600;
+    }
+
+    /* 选项按钮 */
+    .options-group {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .option-btn {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      padding: 20px 24px;
+      border-radius: 16px;
+      color: #ccc;
+      cursor: pointer; /* 保持手指光标 */
+      text-align: left;
+      font-size: 1rem;
+      transition: all 0.2s ease;
+      position: relative;
+    }
+
+    .option-btn:hover {
+      border-color: var(--accent-color);
+      color: #fff;
+      background: #252525;
+      transform: translateX(8px);
+    }
+
+    .option-btn.selected {
+      background: var(--accent-color);
+      color: #fff;
+      border-color: var(--accent-color);
+      font-weight: bold;
+      box-shadow: 0 4px 15px rgba(255, 77, 79, 0.4);
+    }
+
+    /* --- 5. 最后一页 (设置 & 提交) --- */
+    .controls-area {
+      background: #121212;
+      padding: 30px;
+      border-radius: 20px;
+      border: 1px solid #333;
+    }
+
+    .control-item {
+      margin-bottom: 25px;
+    }
+    
+    .control-item label {
+      display: block;
+      margin-bottom: 12px;
+      color: var(--secondary-text);
+      font-size: 0.9rem;
+      letter-spacing: 1px;
+    }
+
+    select {
+      width: 100%;
+      padding: 14px;
+      background: #000;
+      color: #fff;
+      border: 1px solid #444;
+      border-radius: 10px;
+      font-size: 1rem;
+      outline: none;
+      cursor: pointer;
+    }
+
+    select:focus {
+      border-color: var(--accent-color);
+    }
+
+    button#submitBtn {
+      width: 100%;
+      padding: 18px;
+      background: #fff;
+      color: #000;
+      font-weight: 800;
+      border: none;
+      border-radius: 50px;
+      font-size: 1.1rem;
+      cursor: pointer;
+      margin-top: 15px;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    button#submitBtn:hover {
+      transform: scale(1.02);
+      background: var(--accent-color);
+      color: #fff;
+      box-shadow: 0 0 20px rgba(255, 77, 79, 0.6);
+    }
+
+    /* --- 6. 结果展示页 --- */
+    #resultPage {
+      display: none;
+      width: 100%;
+      max-width: 700px;
+      padding: 20px;
+      animation: fadeIn 0.5s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .result-card {
+      background: #111;
+      border: 1px solid #333;
+      border-radius: 20px;
+      padding: 40px;
+      white-space: pre-wrap;
+      line-height: 1.8;
+      color: #e0e0e0;
+      font-size: 1.05rem;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+      position: relative;
+    }
+
+    /* 针对 Markdown 渲染后的简单样式 */
+    .result-card h2 { color: var(--accent-color); margin-top: 0; border-bottom: 1px solid #333; padding-bottom: 15px; }
+    .result-card h3 { color: #fff; margin-top: 30px; margin-bottom: 10px; }
+    .result-card blockquote { border-left: 3px solid var(--accent-color); margin: 20px 0; padding-left: 15px; color: #aaa; font-style: italic; background: #1a1a1a; padding: 15px; border-radius: 0 8px 8px 0; }
+
+    /* 加载动画 */
+    .loader {
+      border: 3px solid #222;
+      border-radius: 50%;
+      border-top: 3px solid var(--accent-color);
+      width: 50px;
+      height: 50px;
+      animation: spin 1s linear infinite;
+      margin: 60px auto 20px auto;
+    }
+
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+    .nav-btns { margin-top: 20px; display: flex; justify-content: center; }
+    .nav-btn { background: transparent; border: none; color: #666; cursor: pointer; font-size: 0.9rem; padding: 10px; text-decoration: underline; }
+    .nav-btn:hover { color: #fff; }
+
+  </style>
+</head>
+<body>
+
+  <!-- DEV MARKER: 用于确认浏览器是否加载的是最新文件，修改后可删除 -->
+  <div id="devMarker" style="position:fixed;left:12px;top:12px;padding:6px 10px;background:#ff4d4f;color:#fff;border-radius:6px;z-index:10000;font-weight:700;font-size:12px;box-shadow:0 6px 18px rgba(0,0,0,0.4);">已更新 · DEV</div>
+
+
+  <div class="progress-container">
+    <div class="progress-bar" id="progressBar">
+      <div class="runner-icon">🏃</div>
+    </div>
+  </div>
+
+  <div class="main-viewport" id="quizViewport">
+    
+    <div id="headerBox">
+      <h1>傩面守护者</h1>
+      <p class="desc">TOUCH THE SOUL OF NUO</p>
+    </div>
+
+    <div class="questions-wrapper" id="sliderWrapper">
+      
+      <div class="slide active" data-index="0">
+        <div class="question-num">01 / 06</div>
+        <div class="question-text">休息日，你灵魂的充电方式是？</div>
+        <div class="options-group">
+          <div class="option-btn" onclick="selectOption(0, this, '热闹：喜欢和一群人一起玩、聊天、聚会。')">A. 喧嚣：人群中的烟火气让我复活</div>
+          <div class="option-btn" onclick="selectOption(0, this, '小范围：和三两好友安静聚一聚就好。')">B. 微醺：三两知己，一杯清茶或浊酒</div>
+          <div class="option-btn" onclick="selectOption(0, this, '独处：一个人待着也很开心。')">C. 闭关：在这个嘈杂的世界里闭麦</div>
+        </div>
+      </div>
+
+      <div class="slide" data-index="1">
+        <div class="question-num">02 / 06</div>
+        <div class="question-text">面对突如其来的棘手难题，你的第一反应？</div>
+        <div class="options-group">
+          <div class="option-btn" onclick="selectOption(1, this, '先上去硬刚，解决不了再说。')">A. 拔刀：不多废话，直接硬刚</div>
+          <div class="option-btn" onclick="selectOption(1, this, '先观察一下形势，再找合适的时机出手。')">B. 潜伏：暗中观察，寻找致命弱点</div>
+          <div class="option-btn" onclick="selectOption(1, this, '先想一圈方案，算算利弊再行动。')">C. 谋划：沙盘推演，不打无准备之仗</div>
+          <div class="option-btn" onclick="selectOption(1, this, '先吐槽两句，再机智地绕过去。')">D. 闪避：吐槽一句，然后灵活走位</div>
+        </div>
+      </div>
+
+      <div class="slide" data-index="2">
+        <div class="question-num">03 / 06</div>
+        <div class="question-text">在团队副本中，你的定位通常是？</div>
+        <div class="options-group">
+          <div class="option-btn" onclick="selectOption(2, this, '冲在前面的人，开路、挡刀都行。')">A. 坦克/先锋：开路挡刀，舍我其谁</div>
+          <div class="option-btn" onclick="selectOption(2, this, '氛围担当，让大家不那么焦虑。')">B. 奶妈/吟游：调节气氛，稳住心态</div>
+          <div class="option-btn" onclick="selectOption(2, this, '策划/军师型，负责出主意、定方向。')">C. 法师/指挥：制定战略，掌控全局</div>
+          <div class="option-btn" onclick="selectOption(2, this, '秩序与公平的维护者，遇到不公会站出来说话。')">D. 裁决者：维护规则，只要公平</div>
+        </div>
+      </div>
+
+      <div class="slide" data-index="3">
+        <div class="question-num">04 / 06</div>
+        <div class="question-text">挚友深夜向你倾诉痛苦，你会？</div>
+        <div class="options-group">
+          <div class="option-btn" onclick="selectOption(3, this, '直接帮忙顶上，先把问题扛住再说。')">A. 替他出头：谁欺负你？我去摆平</div>
+          <div class="option-btn" onclick="selectOption(3, this, '努力安慰他/她，让对方先不那么难受。')">B. 温柔陪伴：提供情绪价值，抱抱你</div>
+          <div class="option-btn" onclick="selectOption(3, this, '跟他/她一起分析利弊，帮忙做选择。')">C. 理性拆解：帮他分析利弊，寻找解法</div>
+          <div class="option-btn" onclick="selectOption(3, this, '先用几句玩笑话缓和气氛，再慢慢想办法。')">D. 幽默化解：讲个笑话，也没多大点事</div>
+        </div>
+      </div>
+
+      <div class="slide" data-index="4">
+        <div class="question-num">05 / 06</div>
+        <div class="question-text">你内心深处最渴望成为哪种存在？</div>
+        <div class="options-group">
+          <div class="option-btn" onclick="selectOption(4, this, '做一个敢正面对抗问题的人。')">A. 勇者：无惧风雨，直面深渊</div>
+          <div class="option-btn" onclick="selectOption(4, this, '做一个能给别人带来安心和笑容的人。')">B. 暖阳：温暖他人，治愈世间</div>
+          <div class="option-btn" onclick="selectOption(4, this, '做一个看得比现在更远、能为别人指路的人。')">C. 智者：洞悉未来，指引方向</div>
+          <div class="option-btn" onclick="selectOption(4, this, '做一个判断是非分明、敢说“不公平”的人。')">D. 判官：铁面无私，黑白分明</div>
+        </div>
+      </div>
+
+      <div class="slide" data-index="5">
+        <div class="question-num">06 / 06</div>
+        <div class="question-text">对待生活中的“情绪”，你的处理方式？</div>
+        <div class="options-group">
+          <div class="option-btn" onclick="selectOption(5, this, '来得快去得也快，像一阵火。')">A. 烈火：爆发出来，烧完就没事了</div>
+          <div class="option-btn" onclick="selectOption(5, this, '自己可以扛，但会尽量让别人轻松一点。')">B. 容器：自己消化，不给别人添堵</div>
+          <div class="option-btn" onclick="selectOption(5, this, '习惯藏在心里，更多是自己消化。')">C. 冰山：深藏海底，表面波澜不惊</div>
+          <div class="option-btn" onclick="selectOption(5, this, '会用自嘲或玩笑的方式化解。')">D. 哈哈：自嘲一下，没什么大不了</div>
+        </div>
+      </div>
+
+      <div class="slide" data-index="6" id="finalSlide">
+        <div class="question-num">FINAL</div>
+        <div class="question-text">最后，请选择揭开面具的方式...</div>
+        
+        <div class="controls-area">
+          <div class="control-item">
+            <label>🔮 解读风格</label>
+            <select id="styleSelect">
+              <option value="庄重仪式感">庄重仪式感 (神谕降临)</option>
+              <option value="沙雕搞笑">沙雕搞笑 (幽默吐槽)</option>
+              <option value="暖心治愈">暖心治愈 (温柔抚慰)</option>
+            </select>
+          </div>
+          
+          <div class="control-item">
+            <label>📜 篇幅长度</label>
+            <select id="lengthSelect">
+              <option value="适中" selected>适中 (推荐)</option>
+              <option value="简短">简短 (一语中的)</option>
+              <option value="详细">详细 (深度剖析)</option>
+            </select>
+          </div>
+
+          <button id="submitBtn">✨ 唤醒守护傩面</button>
+        </div>
+        
+        <div class="nav-btns">
+          <button class="nav-btn" onclick="prevSlide()">← 返回上一题</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div id="resultPage">
+    <div id="loadingBox" style="text-align:center;">
+      <div class="loader"></div>
+      <p>正在穿越时空，连接远古傩神...</p>
+      <p style="font-size:12px; color:#666; margin-top:10px;">(AI 正在思考命运的轨迹)</p>
+    </div>
+    
+    <div id="resultContent" class="result-card" style="display:none;">
+      </div>
+    
+    <div style="text-align:center; margin-top:30px;">
+      <button class="nav-btn" onclick="location.reload()">↺ 重新测试</button>
+    </div>
+  </div>
+
+  <script>
+    // =================配置区=================
+    // 🔴 重要：请务必把这里换成你的 Key
+    const API_KEY = "YOUR_API_KEY_HERE"; 
+    // 🔴 修复：改回 1.5 版本，解决 Error 400 问题
+    const MODEL_NAME = "gemini-1.5-flash"; 
+    // =======================================
+
+    // --- 1. System Prompt (保持不变) ---
+    const SYSTEM_PROMPT = `你是一个“傩面守护者人格测试引擎”。
+
+【你的任务】
+- 玩家已经在网页上回答了一系列生活/性格问题。
+- 你会收到这些问题和玩家的选项（文字描述），以及两个控制参数：
+  - 结果文风: ["沙雕搞笑","暖心治愈","庄重仪式感"] 之一
+  - 结果长度: ["简短","适中","详细"] 之一
+- 请根据玩家的回答，推断他/她更接近哪一种“傩面守护者”类型，并写出测试结果。
+
+【傩面守护者类型设定】
+1. 虎面镇邪守护者 (直率/硬刚/保护欲)
+2. 笑面祈福守护者 (乐观/安慰/氛围组)
+3. 童子灵动守护者 (机智/好奇/顽皮)
+4. 火神镇煞守护者 (行动力/炽热/爆发)
+5. 智者判官守护者 (理性/公平/裁决)
+6. 文卦引路守护者 (远见/策划/指引)
+
+【输出结构要求 - 请严格使用Markdown格式】
+
+## 🎭 你的守护称号：[一句话称号]
+
+### 📖 人格小故事
+(这里根据文风写一段关于玩家性格的描述)
+
+### 👺 傩面文化说明
+(正式解释该傩面的文化含义与功能)
+
+### 🧧 今日守护签
+> (一句给玩家的建议)
+
+【回答格式】
+- 不要输出题目重复内容。
+- 必须包含上述四个小标题。
+`;
+
+    // --- 2. 逻辑控制 ---
+    let currentSlideIndex = 0;
+    const totalSlides = 7; 
+    const answers = new Array(6).fill(null);
+    
+    const sliderWrapper = document.getElementById('sliderWrapper');
+    const slides = document.querySelectorAll('.slide');
+    const progressBar = document.getElementById('progressBar');
+    const quizViewport = document.getElementById('quizViewport');
+    const resultPage = document.getElementById('resultPage');
+    const loadingBox = document.getElementById('loadingBox');
+    const resultContent = document.getElementById('resultContent');
+
+    // 初始化
+    // 确保每个 slide 占据视口宽度，并计算像素宽度用于平滑位移
+    slides.forEach(s => s.style.flex = '0 0 100%');
+    let slideWidth = (slides[0] && slides[0].getBoundingClientRect().width) || quizViewport.clientWidth;
+    window.addEventListener('resize', () => {
+      slideWidth = (slides[0] && slides[0].getBoundingClientRect().width) || quizViewport.clientWidth;
+      updateView();
+    });
+
+    updateProgress();
+
+    // 选中选项逻辑
+    window.selectOption = function(questionIndex, btnElement, value) {
+      answers[questionIndex] = {
+        q: document.querySelector(`.slide[data-index="${questionIndex}"] .question-text`).innerText,
+        a: value
+      };
+
+      const siblings = btnElement.parentElement.children;
+      for (let sib of siblings) sib.classList.remove('selected');
+      btnElement.classList.add('selected');
+
+      setTimeout(() => {
+        nextSlide();
+      }, 300); // 滑动延迟
+    };
+
+    function nextSlide() {
+      if (currentSlideIndex < totalSlides - 1) {
+        currentSlideIndex++;
+        updateView();
+      }
+    }
+
+    window.prevSlide = function() {
+      if (currentSlideIndex > 0) {
+        currentSlideIndex--;
+        updateView();
+      }
+    }
+
+    function updateView() {
+      sliderWrapper.style.transform = `translateX(-${currentSlideIndex * slideWidth}px)`;
+      slides.forEach((slide, idx) => {
+        if (idx === currentSlideIndex) {
+          slide.classList.add('active');
+        } else {
+          slide.classList.remove('active');
+        }
+      });
+      updateProgress();
+    }
+
+    function updateProgress() {
+      // 计算进度百分比
+      const percent = ((currentSlideIndex) / (totalSlides - 1)) * 100;
+      progressBar.style.width = `${percent}%`;
+    }
+
+    // --- 3. 提交与 API 调用 ---
+    document.getElementById('submitBtn').onclick = async () => {
+      if (answers.some(a => a === null)) {
+        alert("还有题目没做完，请返回检查！👻");
+        return;
+      }
+
+      quizViewport.style.display = 'none';
+      resultPage.style.display = 'block';
+      loadingBox.style.display = 'block';
+      resultContent.style.display = 'none';
+
+      const style = document.getElementById('styleSelect').value;
+      const length = document.getElementById('lengthSelect').value;
+
+      let userText = "玩家作答如下：\n";
+      answers.forEach((item, idx) => {
+        userText += `${idx + 1}. ${item.q}\n   选择：${item.a}\n`;
+      });
+      userText += `\n结果文风：${style}\n结果长度：${length}\n`;
+
+      try {
+        const reply = await callGemini(userText);
+        
+        loadingBox.style.display = 'none';
+        resultContent.style.display = 'block';
+        
+        // 简单的 Markdown 转 HTML 渲染
+        let htmlReply = reply
+          .replace(/### (.*)/g, '<h3>$1</h3>')
+          .replace(/## (.*)/g, '<h2>$1</h2>')
+          .replace(/> (.*)/g, '<blockquote>$1</blockquote>')
+          .replace(/\*\*(.*?)\*\*/g, '<strong style="color:#ff4d4f;">$1</strong>'); // 加粗变红
+
+        resultContent.innerHTML = htmlReply;
+
+      } catch (e) {
+        loadingBox.innerHTML = `<p style="color:#ff4d4f; font-weight:bold;">⚠️ 唤醒失败: ${e.message}</p><p style="font-size:12px; color:#666">可能是网络原因或 API Key 填写错误。</p><button class="nav-btn" onclick="location.reload()">重试</button>`;
+      }
+    };
+
+    async function callGemini(text) {
+      // Mock 实现：用于本地调试和 UI 预览（不依赖真实 API Key）
+      await new Promise(res => setTimeout(res, 450)); // 模拟网络延迟
+
+      // 根据传入的用户作答 text（用于展示或调试），构造一个示例 Markdown 结果
+      const sample = `## 🎭 你的守护称号：火焰之心\n\n### 📖 人格小故事\n你像烈焰一般热烈而直接，面对困难总是第一个冲上前线。朋友眼中的你，是那个在暗处为大家点燃希望的人。\n\n### 👺 傩面文化说明\n火神镇煞守护者以行动与热情见长，象征勇气与保护。佩戴此面者，能带来驱散寒意的温度与临危不惧的气场。\n\n### 🧧 今日守护签\n> 保持热情，但别忘了方向。`;
+
+      // 如果需要，可根据 text 中的关键词返回不同的模板（这里简单返回同一示例）
+      return sample;
+    }
+  </script>
+</body>
+</html>
